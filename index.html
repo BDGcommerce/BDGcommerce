@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -53,9 +54,10 @@
 <script src="shared.js"></script>
 <script>
 /* ============================================================
-   CATÁLOGO — somente exibição. Lê os produtos do localStorage.
+   CATÁLOGO — somente exibição. Lê os produtos do Supabase.
 ============================================================ */
 let searchTerm = '';
+let allProducts = [];   // cache dos produtos carregados do Supabase
 let rotation = 0;
 let isScrolling = false;
 let scrollTimeout = null;
@@ -69,8 +71,8 @@ function toast(msg) {
 }
 
 /* ---------- Filtro (busca) ---------- */
-function filtered() {
-  return getProducts().filter(p => {
+function filtered(products) {
+  return products.filter(p => {
     if (!searchTerm) return true;
     return (p.name || '').toLowerCase().includes(searchTerm) ||
            (p.desc || '').toLowerCase().includes(searchTerm) ||
@@ -80,15 +82,15 @@ function filtered() {
 }
 
 /* ---------- Grade de produtos ---------- */
-function renderGrid() {
+function renderGrid(products) {
   const grid = document.getElementById('productGrid');
   const empty = document.getElementById('emptyState');
-  const list = filtered();
+  const list = filtered(products);
 
   if (!list.length) {
     grid.innerHTML = '';
     empty.classList.remove('hidden');
-    empty.textContent = getProducts().length
+    empty.textContent = products.length
       ? 'Nenhum produto encontrado para esse filtro.'
       : 'Nenhum produto cadastrado ainda. Volte em breve!';
     return;
@@ -138,9 +140,9 @@ function priceBox(p) {
 }
 
 /* ---------- Galeria circular 3D ---------- */
-function renderGallery() {
+function renderGallery(products) {
   const stage = document.getElementById('galleryStage');
-  const items = getProducts().slice(0, 12);
+  const items = (products || []).slice(0, 12);
   if (!items.length) {
     stage.innerHTML = `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)">
       Nenhum produto na vitrine ainda.</div>`;
@@ -199,39 +201,37 @@ function autoRotate() {
   }
   requestAnimationFrame(autoRotate);
 }
-requestAnimationFrame(autoRotate);
 
 /* Recria a vitrine ao girar/redimensionar a tela (recalcula o raio) */
 let resizeT;
 window.addEventListener('resize', () => {
   clearTimeout(resizeT);
-  resizeT = setTimeout(renderGallery, 200);
+  resizeT = setTimeout(() => renderGallery(allProducts), 200);
 });
 
-/* ---------- Busca ---------- */
+/* ---------- Busca (filtra o cache, sem recarregar do servidor) ---------- */
 document.getElementById('search').addEventListener('input', e => {
   searchTerm = e.target.value.trim().toLowerCase();
-  renderGrid();
+  renderGrid(allProducts);
 });
 
-/* ---------- FAB WhatsApp ---------- */
-document.getElementById('fabWhats').onclick = () => window.open(whatsLink(null), '_blank');
-
-/* ---------- Atualiza ao vivo se o admin mudar em outra aba ---------- */
-window.addEventListener('storage', e => {
-  if (e.key === STORE_KEY || e.key === CFG_KEY) refreshAll();
-});
-
-/* ---------- Init ---------- */
-function refreshAll() {
-  renderGrid();
-  renderGallery();
+/* ---------- Carrega/atualiza os produtos do Supabase ---------- */
+async function refreshAll() {
+  allProducts = await getProducts();
+  renderGrid(allProducts);
+  renderGallery(allProducts);
 }
 
-document.getElementById('year').textContent = new Date().getFullYear();
-document.getElementById('fabIcon').innerHTML = WHATS_ICON;
-seedIfFirstVisit();
-refreshAll();
+/* ---------- Init ---------- */
+async function init() {
+  document.getElementById('year').textContent = new Date().getFullYear();
+  document.getElementById('fabIcon').innerHTML = WHATS_ICON;
+  document.getElementById('fabWhats').onclick = () => window.open(whatsLink(null), '_blank');
+  await refreshAll();
+  requestAnimationFrame(autoRotate);
+}
+
+init();
 </script>
 </body>
 </html>

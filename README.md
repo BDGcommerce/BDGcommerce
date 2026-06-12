@@ -17,19 +17,21 @@ que levam direto ao WhatsApp da loja.
 - **Cliente:** abra `index.html`.
 - **Administrador:** abra `admin.html` (login com senha) para cadastrar/editar produtos.
 
-Os produtos e configurações ficam salvos no navegador (`localStorage`).
+Os produtos e imagens ficam no **Supabase** (banco de dados + storage), então são
+compartilhados entre todos os dispositivos. O login do admin usa **Supabase Auth**.
 
 ## Configuração
 
+Antes de usar, configure o backend seguindo o **[SETUP.md](SETUP.md)**:
+criar o projeto Supabase, a tabela `products`, o bucket de imagens, o usuário admin
+e colar a URL/anon key no `shared.js`.
+
 No painel administrativo é possível alterar:
-- O número de WhatsApp da loja
-- A senha de acesso ao admin
+- O número de WhatsApp da loja (salvo localmente)
 
-## Observações importantes
+## Segurança
 
-1. **Senha do admin:** por ser um site estático, a senha fica no código (lado do cliente)
-   e **não oferece segurança real** — serve apenas para evitar acesso casual. Para segurança
-   de verdade é necessário um backend/servidor com autenticação.
-2. **Dados por dispositivo:** como os produtos ficam no `localStorage`, eles **não sincronizam
-   automaticamente entre dispositivos**. Para um catálogo único acessível de qualquer lugar,
-   é preciso um banco de dados/backend.
+- Login real via Supabase Auth (e-mail/senha com JWT).
+- Escrita no banco e upload de imagens só com sessão autenticada (Row Level Security).
+- A `anon key` é pública por design; nunca exponha a `service_role` key no frontend.
+- A página `admin.html` não tem link no catálogo — acesso por URL direta apenas.

@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -28,13 +29,16 @@
     <div class="panel">
       <h3>🔒 Área do Administrador</h3>
       <div class="field">
-        <label for="pwd">Senha de acesso</label>
-        <input type="password" id="pwd" placeholder="Digite a senha" />
+        <label for="adminEmail">E-mail</label>
+        <input type="email" id="adminEmail" placeholder="admin@bdgstore.com" />
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label for="adminPwd">Senha</label>
+        <input type="password" id="adminPwd" placeholder="Senha" />
       </div>
       <div class="row-actions" style="justify-content:center;">
         <button class="btn-primary" id="loginBtn">Entrar</button>
       </div>
-      <p class="hint">Senha padrão: <b>bdg123</b> (altere abaixo após entrar).</p>
     </div>
   </div>
 
@@ -49,10 +53,6 @@
         <div class="field">
           <label for="cfgWhats">WhatsApp da empresa (com DDI e DDD)</label>
           <input type="text" id="cfgWhats" placeholder="Ex: 55996922568" />
-        </div>
-        <div class="field">
-          <label for="cfgPwd">Alterar senha do ADM</label>
-          <input type="password" id="cfgPwd" placeholder="Nova senha (deixe em branco para manter)" />
         </div>
       </div>
       <div class="row-actions">
@@ -113,7 +113,6 @@
       <div class="admin-list" id="adminList"></div>
       <div class="empty hidden" id="adminEmpty">Nenhum produto cadastrado ainda.</div>
       <div class="row-actions">
-        <button class="btn-ghost" id="seedBtn">Carregar produtos de exemplo</button>
         <button class="btn-ghost" id="logoutBtn">Sair</button>
       </div>
     </div>
@@ -125,10 +124,11 @@
 <script src="shared.js"></script>
 <script>
 /* ============================================================
-   PAINEL ADMINISTRATIVO — grava produtos/config no localStorage.
+   PAINEL ADMINISTRATIVO — Supabase (Auth + Database + Storage).
 ============================================================ */
 let editingId = null;
-let currentImage = ''; // foto do produto em edição (data URL)
+let currentImage = '';   // URL da imagem existente (ao editar)
+let currentList = [];     // cache da lista de produtos carregada
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -141,47 +141,59 @@ function toast(msg) {
 const adminLock = document.getElementById('adminLock');
 const adminPanel = document.getElementById('adminPanel');
 
-/* ---------- Login ---------- */
-document.getElementById('loginBtn').onclick = tryLogin;
-document.getElementById('pwd').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+/* ============================================================
+   SESSÃO / AUTENTICAÇÃO
+============================================================ */
+function mostrarPainel() {
+  adminLock.classList.add('hidden');
+  adminPanel.classList.remove('hidden');
+  refreshAdmin();
+}
+function mostrarLogin() {
+  adminPanel.classList.add('hidden');
+  adminLock.classList.remove('hidden');
+}
 
-async function tryLogin() {
-  const val = document.getElementById('pwd').value;
-  const hash = await sha256(val);
-  if (hash === getConfig().passwordHash) {
-    adminLock.classList.add('hidden');
-    adminPanel.classList.remove('hidden');
-    document.getElementById('pwd').value = '';
-    refreshAdmin();
-  } else {
-    toast('Senha incorreta.');
+window.addEventListener('DOMContentLoaded', async () => {
+  const session = await getSession();
+  if (session) mostrarPainel();
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (session) mostrarPainel();
+    else mostrarLogin();
+  });
+});
+
+document.getElementById('loginBtn').onclick = login;
+document.getElementById('adminPwd').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+async function login() {
+  const email = document.getElementById('adminEmail').value.trim();
+  const password = document.getElementById('adminPwd').value;
+  try {
+    await adminLogin(email, password);
+    document.getElementById('adminPwd').value = '';
+    // onAuthStateChange cuida de mostrar o painel
+  } catch (e) {
+    toast('E-mail ou senha incorretos.');
   }
 }
 
-document.getElementById('logoutBtn').onclick = () => {
-  adminPanel.classList.add('hidden');
-  adminLock.classList.remove('hidden');
+document.getElementById('logoutBtn').onclick = async () => {
+  await adminLogout();
 };
 
-/* ---------- Configurações ---------- */
-function fillConfigForm() {
-  const cfg = getConfig();
-  document.getElementById('cfgWhats').value = cfg.whatsapp || '';
-  document.getElementById('cfgPwd').value = ''; // nunca preenche a senha
-}
-document.getElementById('saveCfg').onclick = async () => {
-  const cfg = getConfig();
+/* ============================================================
+   CONFIGURAÇÕES (WhatsApp — guardado localmente)
+============================================================ */
+document.getElementById('saveCfg').onclick = () => {
   const w = document.getElementById('cfgWhats').value.replace(/\D/g, '');
-  const p = document.getElementById('cfgPwd').value.trim();
-  cfg.whatsapp = w || cfg.whatsapp;
-  if (p) cfg.passwordHash = await sha256(p);
-  delete cfg.password; // remove qualquer senha antiga em texto puro
-  setConfig(cfg);
-  document.getElementById('cfgPwd').value = '';
+  localStorage.setItem('bdgstore_config', JSON.stringify({ whatsapp: w || '55996922568' }));
   toast('Configurações salvas!');
 };
 
-/* ---------- Upload / redimensionamento da foto ---------- */
+/* ============================================================
+   UPLOAD / REDIMENSIONAMENTO DA FOTO
+============================================================ */
 function fileToResizedDataURL(file, maxSize, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -220,8 +232,8 @@ document.getElementById('pImageFile').addEventListener('change', async e => {
   if (!file) return;
   if (!file.type.startsWith('image/')) { toast('Selecione um arquivo de imagem.'); return; }
   try {
-    currentImage = await fileToResizedDataURL(file, 900, 0.82);
-    showPreview(currentImage);
+    const preview = await fileToResizedDataURL(file, 900, 0.82);
+    showPreview(preview);
   } catch {
     toast('Não foi possível carregar a imagem.');
   }
@@ -233,7 +245,9 @@ document.getElementById('removeImg').onclick = () => {
   showPreview('');
 };
 
-/* ---------- Form de produto ---------- */
+/* ============================================================
+   FORMULÁRIO DE PRODUTO
+============================================================ */
 function clearForm() {
   editingId = null;
   currentImage = '';
@@ -245,52 +259,58 @@ function clearForm() {
 }
 document.getElementById('cancelEdit').onclick = clearForm;
 
-document.getElementById('saveProduct').onclick = () => {
+document.getElementById('saveProduct').onclick = async () => {
+  const session = await getSession();
+  if (!session) { toast('Sessão expirada. Faça login novamente.'); mostrarLogin(); return; }
+
   const name = document.getElementById('pName').value.trim();
   const category = document.getElementById('pCategory').value.trim();
   if (!name) { toast('Informe o nome do produto.'); return; }
+
+  let imageUrl = currentImage; // URL já existente se estiver editando
+
+  const file = document.getElementById('pImageFile').files[0];
+  if (file) {
+    try {
+      toast('Fazendo upload da imagem...');
+      imageUrl = await uploadImage(file);
+    } catch (e) {
+      toast('Erro no upload da imagem: ' + e.message);
+      return;
+    }
+  }
 
   const data = {
     name,
     category: category || 'Geral',
     badge: document.getElementById('pBadge').value.trim(),
     price: document.getElementById('pPrice').value.trim(),
-    priceOld: document.getElementById('pPriceOld').value.trim(),
-    installments: document.getElementById('pInstallments').value.trim(),
-    image: currentImage,
+    price_old: document.getElementById('pPriceOld').value.trim(),
+    installments: parseInt(document.getElementById('pInstallments').value) || null,
+    image: imageUrl,
     desc: document.getElementById('pDesc').value.trim()
   };
 
-  const products = getProducts();
-  const isEdit = !!editingId;
-  if (isEdit) {
-    const idx = products.findIndex(p => p.id === editingId);
-    if (idx > -1) products[idx] = Object.assign(products[idx], data);
-  } else {
-    products.push(Object.assign({ id: uid() }, data));
-  }
-
   try {
-    setProducts(products);
-  } catch (err) {
-    toast('Espaço de armazenamento cheio. Remova produtos antigos ou use fotos menores.');
-    return;
+    await saveProduct(data, editingId);
+    toast(editingId ? 'Produto atualizado!' : 'Produto adicionado!');
+    clearForm();
+    await refreshAdmin();
+  } catch (e) {
+    toast('Erro ao salvar: ' + e.message);
   }
-  toast(isEdit ? 'Produto atualizado!' : 'Produto adicionado!');
-  clearForm();
-  refreshAdmin();
 };
 
 function editProduct(id) {
-  const p = getProducts().find(x => x.id === id);
+  const p = currentList.find(x => String(x.id) === String(id));
   if (!p) return;
-  editingId = id;
+  editingId = p.id;
   currentImage = p.image || '';
   document.getElementById('pName').value = p.name || '';
   document.getElementById('pCategory').value = p.category || '';
   document.getElementById('pBadge').value = p.badge || '';
   document.getElementById('pPrice').value = p.price || '';
-  document.getElementById('pPriceOld').value = p.priceOld || '';
+  document.getElementById('pPriceOld').value = p.priceOld || p.price_old || '';
   document.getElementById('pInstallments').value = p.installments || '';
   document.getElementById('pImageFile').value = '';
   document.getElementById('pDesc').value = p.desc || '';
@@ -300,20 +320,27 @@ function editProduct(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function deleteProduct(id) {
-  const p = getProducts().find(x => x.id === id);
-  if (!confirm(`Remover "${p ? p.name : 'produto'}"?`)) return;
-  setProducts(getProducts().filter(x => x.id !== id));
-  if (editingId === id) clearForm();
-  toast('Produto removido.');
-  refreshAdmin();
+async function handleDeleteProduct(id) {
+  const p = currentList.find(x => String(x.id) === String(id));
+  const name = p ? p.name : 'produto';
+  if (!confirm(`Remover "${name}"?`)) return;
+  try {
+    await deleteProduct(id);
+    if (String(editingId) === String(id)) clearForm();
+    toast('Produto removido.');
+    await refreshAdmin();
+  } catch (e) {
+    toast('Erro ao remover: ' + e.message);
+  }
 }
 
-/* ---------- Lista admin ---------- */
-function renderAdminList() {
+/* ============================================================
+   LISTA DE PRODUTOS
+============================================================ */
+function renderAdminList(products) {
+  currentList = products;
   const list = document.getElementById('adminList');
   const empty = document.getElementById('adminEmpty');
-  const products = getProducts();
   document.getElementById('count').textContent = products.length;
 
   if (!products.length) {
@@ -330,37 +357,31 @@ function renderAdminList() {
         <strong>${escapeHtml(p.name)}</strong>
         <span>${escapeHtml(p.category || 'Geral')}${p.price ? ' • R$ ' + escapeHtml(p.price) : ''}</span>
       </div>
-      <button class="btn-ghost" onclick="editProduct(${p.id})">Editar</button>
-      <button class="btn-del" onclick="deleteProduct(${p.id})">Excluir</button>
+      <button class="btn-ghost" onclick="editProduct('${p.id}')">Editar</button>
+      <button class="btn-del" onclick="handleDeleteProduct('${p.id}')">Excluir</button>
     </div>
   `).join('');
 }
 
 /* ---------- Datalist de categorias ---------- */
-function renderCatList() {
+function renderCatList(products) {
   const dl = document.getElementById('catList');
   const cats = Array.from(new Set([
-    ...getProducts().map(p => p.category),
+    ...products.map(p => p.category),
     'Ferramentas', 'Eletrodomésticos', 'Casa & Utilidades', 'Geral'
   ].filter(Boolean)));
   dl.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
 }
 
-/* ---------- Seed ---------- */
-document.getElementById('seedBtn').onclick = () => {
-  const products = getProducts();
-  if (products.length && !confirm('Isso adicionará os produtos de exemplo à sua lista atual. Continuar?')) return;
-  sampleProducts.forEach(s => products.push(Object.assign({}, s, { id: uid() })));
-  setProducts(products);
-  toast('Produtos de exemplo adicionados!');
-  refreshAdmin();
-};
-
-/* ---------- Refresh ---------- */
-function refreshAdmin() {
-  fillConfigForm();
-  renderAdminList();
-  renderCatList();
+/* ============================================================
+   REFRESH
+============================================================ */
+async function refreshAdmin() {
+  const products = await getProducts();
+  renderAdminList(products);
+  renderCatList(products);
+  const cfg = JSON.parse(localStorage.getItem('bdgstore_config') || '{}');
+  document.getElementById('cfgWhats').value = cfg.whatsapp || '55996922568';
 }
 </script>
 </body>
