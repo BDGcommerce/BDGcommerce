@@ -11,8 +11,16 @@ const SEED_VERSION = 2; // aumente este número para recarregar os produtos de e
 
 const defaultConfig = {
   whatsapp: '55996922568', // WhatsApp oficial da BDGstore
-  password: 'bdg123'
+  // Hash SHA-256 da senha (padrão = "bdg123"). A senha em si NÃO fica no código.
+  passwordHash: '98552c28890ce8d60e6a237a08ee3fdde3e1534eb04b2b70ac66c0ebced91e47'
 };
+
+/* Gera o hash SHA-256 de um texto (usado na senha do admin) */
+async function sha256(text) {
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const sampleProducts = [
   { id: 1, name: 'Furadeira de Impacto Bosch 18V-150 C', category: 'Ferramentas', badge: 'Lançamento',

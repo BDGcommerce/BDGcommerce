@@ -52,7 +52,7 @@
         </div>
         <div class="field">
           <label for="cfgPwd">Alterar senha do ADM</label>
-          <input type="text" id="cfgPwd" placeholder="Nova senha (deixe igual para manter)" />
+          <input type="password" id="cfgPwd" placeholder="Nova senha (deixe em branco para manter)" />
         </div>
       </div>
       <div class="row-actions">
@@ -145,9 +145,10 @@ const adminPanel = document.getElementById('adminPanel');
 document.getElementById('loginBtn').onclick = tryLogin;
 document.getElementById('pwd').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
 
-function tryLogin() {
+async function tryLogin() {
   const val = document.getElementById('pwd').value;
-  if (val === getConfig().password) {
+  const hash = await sha256(val);
+  if (hash === getConfig().passwordHash) {
     adminLock.classList.add('hidden');
     adminPanel.classList.remove('hidden');
     document.getElementById('pwd').value = '';
@@ -166,15 +167,17 @@ document.getElementById('logoutBtn').onclick = () => {
 function fillConfigForm() {
   const cfg = getConfig();
   document.getElementById('cfgWhats').value = cfg.whatsapp || '';
-  document.getElementById('cfgPwd').value = cfg.password || '';
+  document.getElementById('cfgPwd').value = ''; // nunca preenche a senha
 }
-document.getElementById('saveCfg').onclick = () => {
+document.getElementById('saveCfg').onclick = async () => {
   const cfg = getConfig();
   const w = document.getElementById('cfgWhats').value.replace(/\D/g, '');
   const p = document.getElementById('cfgPwd').value.trim();
   cfg.whatsapp = w || cfg.whatsapp;
-  if (p) cfg.password = p;
+  if (p) cfg.passwordHash = await sha256(p);
+  delete cfg.password; // remove qualquer senha antiga em texto puro
   setConfig(cfg);
+  document.getElementById('cfgPwd').value = '';
   toast('Configurações salvas!');
 };
 
