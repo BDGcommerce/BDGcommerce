@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BDGstore — Painel Administrativo</title>
+<link rel="icon" href="WhatsApp-Image-2026-06-11-at-19.18.22.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">
+    <img src="WhatsApp-Image-2026-06-11-at-19.18.22.png" alt="BDGstore" />
+    <span class="adm-badge">· ADM</span>
+  </div>
+  <nav class="tabs">
+    <a href="index.html" class="outline">↗ Ver catálogo</a>
+  </nav>
+</header>
+
+<main>
+  <!-- Login -->
+  <div id="adminLock" class="lock">
+    <div class="panel">
+      <h3>🔒 Área do Administrador</h3>
+      <div class="field">
+        <label for="pwd">Senha de acesso</label>
+        <input type="password" id="pwd" placeholder="Digite a senha" />
+      </div>
+      <div class="row-actions" style="justify-content:center;">
+        <button class="btn-primary" id="loginBtn">Entrar</button>
+      </div>
+      <p class="hint">Senha padrão: <b>bdg123</b> (altere abaixo após entrar).</p>
+    </div>
+  </div>
+
+  <!-- Painel -->
+  <div id="adminPanel" class="hidden">
+    <h2 class="section-title">Painel do Administrador</h2>
+    <p class="section-sub">Adicione e gerencie produtos. Tudo que salvar aqui aparece automaticamente no catálogo.</p>
+
+    <div class="panel">
+      <h3>⚙️ Configurações da loja</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label for="cfgWhats">WhatsApp da empresa (com DDI e DDD)</label>
+          <input type="text" id="cfgWhats" placeholder="Ex: 55996922568" />
+        </div>
+        <div class="field">
+          <label for="cfgPwd">Alterar senha do ADM</label>
+          <input type="text" id="cfgPwd" placeholder="Nova senha (deixe igual para manter)" />
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn-primary" id="saveCfg">Salvar configurações</button>
+      </div>
+      <p class="hint">Formato do WhatsApp: apenas números. Brasil = 55 + DDD + número. Ex.: 55996922568</p>
+    </div>
+
+    <div class="panel">
+      <h3 id="formTitle">➕ Adicionar produto</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label for="pName">Nome do produto *</label>
+          <input type="text" id="pName" placeholder="Ex: Furadeira de Impacto 650W" />
+        </div>
+        <div class="field">
+          <label for="pCategory">Categoria *</label>
+          <input type="text" id="pCategory" list="catList" placeholder="Ex: Ferramentas" />
+          <datalist id="catList"></datalist>
+        </div>
+        <div class="field">
+          <label for="pBadge">Selo de destaque (opcional)</label>
+          <input type="text" id="pBadge" placeholder="Ex: Lançamento, Mais Vendido..." />
+        </div>
+        <div class="field">
+          <label for="pPrice">Preço à vista / Pix (R$)</label>
+          <input type="text" id="pPrice" placeholder="Ex: 249,90" />
+        </div>
+        <div class="field">
+          <label for="pPriceOld">Preço no cartão / de tabela (R$) — opcional</label>
+          <input type="text" id="pPriceOld" placeholder="Ex: 279,90" />
+        </div>
+        <div class="field">
+          <label for="pInstallments">Parcelas sem juros</label>
+          <input type="number" id="pInstallments" min="1" max="24" placeholder="12" />
+        </div>
+        <div class="field">
+          <label for="pImageFile">Foto do produto (do seu dispositivo)</label>
+          <input type="file" id="pImageFile" accept="image/*" />
+          <div id="imgPreviewWrap" class="img-preview hidden">
+            <img id="imgPreview" alt="Pré-visualização" />
+            <button type="button" class="btn-del" id="removeImg">Remover foto</button>
+          </div>
+        </div>
+        <div class="field full">
+          <label for="pDesc">Descrição</label>
+          <textarea id="pDesc" placeholder="Detalhes do produto..."></textarea>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn-primary" id="saveProduct">Salvar produto</button>
+        <button class="btn-ghost hidden" id="cancelEdit">Cancelar edição</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>📦 Produtos cadastrados (<span id="count">0</span>)</h3>
+      <div class="admin-list" id="adminList"></div>
+      <div class="empty hidden" id="adminEmpty">Nenhum produto cadastrado ainda.</div>
+      <div class="row-actions">
+        <button class="btn-ghost" id="seedBtn">Carregar produtos de exemplo</button>
+        <button class="btn-ghost" id="logoutBtn">Sair</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"></script>
+<script>
+/* ============================================================
+   PAINEL ADMINISTRATIVO — grava produtos/config no localStorage.
+============================================================ */
+let editingId = null;
+let currentImage = ''; // foto do produto em edição (data URL)
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+const adminLock = document.getElementById('adminLock');
+const adminPanel = document.getElementById('adminPanel');
+
+/* ---------- Login ---------- */
+document.getElementById('loginBtn').onclick = tryLogin;
+document.getElementById('pwd').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+function tryLogin() {
+  const val = document.getElementById('pwd').value;
+  if (val === getConfig().password) {
+    adminLock.classList.add('hidden');
+    adminPanel.classList.remove('hidden');
+    document.getElementById('pwd').value = '';
+    refreshAdmin();
+  } else {
+    toast('Senha incorreta.');
+  }
+}
+
+document.getElementById('logoutBtn').onclick = () => {
+  adminPanel.classList.add('hidden');
+  adminLock.classList.remove('hidden');
+};
+
+/* ---------- Configurações ---------- */
+function fillConfigForm() {
+  const cfg = getConfig();
+  document.getElementById('cfgWhats').value = cfg.whatsapp || '';
+  document.getElementById('cfgPwd').value = cfg.password || '';
+}
+document.getElementById('saveCfg').onclick = () => {
+  const cfg = getConfig();
+  const w = document.getElementById('cfgWhats').value.replace(/\D/g, '');
+  const p = document.getElementById('cfgPwd').value.trim();
+  cfg.whatsapp = w || cfg.whatsapp;
+  if (p) cfg.password = p;
+  setConfig(cfg);
+  toast('Configurações salvas!');
+};
+
+/* ---------- Upload / redimensionamento da foto ---------- */
+function fileToResizedDataURL(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; }
+        else if (height >= width && height > maxSize) { width = Math.round(width * maxSize / height); height = maxSize; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function showPreview(src) {
+  const wrap = document.getElementById('imgPreviewWrap');
+  if (src) {
+    document.getElementById('imgPreview').src = src;
+    wrap.classList.remove('hidden');
+  } else {
+    wrap.classList.add('hidden');
+    document.getElementById('imgPreview').removeAttribute('src');
+  }
+}
+
+document.getElementById('pImageFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('Selecione um arquivo de imagem.'); return; }
+  try {
+    currentImage = await fileToResizedDataURL(file, 900, 0.82);
+    showPreview(currentImage);
+  } catch {
+    toast('Não foi possível carregar a imagem.');
+  }
+});
+
+document.getElementById('removeImg').onclick = () => {
+  currentImage = '';
+  document.getElementById('pImageFile').value = '';
+  showPreview('');
+};
+
+/* ---------- Form de produto ---------- */
+function clearForm() {
+  editingId = null;
+  currentImage = '';
+  ['pName','pCategory','pBadge','pPrice','pPriceOld','pInstallments','pDesc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pImageFile').value = '';
+  showPreview('');
+  document.getElementById('formTitle').textContent = '➕ Adicionar produto';
+  document.getElementById('cancelEdit').classList.add('hidden');
+}
+document.getElementById('cancelEdit').onclick = clearForm;
+
+document.getElementById('saveProduct').onclick = () => {
+  const name = document.getElementById('pName').value.trim();
+  const category = document.getElementById('pCategory').value.trim();
+  if (!name) { toast('Informe o nome do produto.'); return; }
+
+  const data = {
+    name,
+    category: category || 'Geral',
+    badge: document.getElementById('pBadge').value.trim(),
+    price: document.getElementById('pPrice').value.trim(),
+    priceOld: document.getElementById('pPriceOld').value.trim(),
+    installments: document.getElementById('pInstallments').value.trim(),
+    image: currentImage,
+    desc: document.getElementById('pDesc').value.trim()
+  };
+
+  const products = getProducts();
+  const isEdit = !!editingId;
+  if (isEdit) {
+    const idx = products.findIndex(p => p.id === editingId);
+    if (idx > -1) products[idx] = Object.assign(products[idx], data);
+  } else {
+    products.push(Object.assign({ id: uid() }, data));
+  }
+
+  try {
+    setProducts(products);
+  } catch (err) {
+    toast('Espaço de armazenamento cheio. Remova produtos antigos ou use fotos menores.');
+    return;
+  }
+  toast(isEdit ? 'Produto atualizado!' : 'Produto adicionado!');
+  clearForm();
+  refreshAdmin();
+};
+
+function editProduct(id) {
+  const p = getProducts().find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  currentImage = p.image || '';
+  document.getElementById('pName').value = p.name || '';
+  document.getElementById('pCategory').value = p.category || '';
+  document.getElementById('pBadge').value = p.badge || '';
+  document.getElementById('pPrice').value = p.price || '';
+  document.getElementById('pPriceOld').value = p.priceOld || '';
+  document.getElementById('pInstallments').value = p.installments || '';
+  document.getElementById('pImageFile').value = '';
+  document.getElementById('pDesc').value = p.desc || '';
+  showPreview(currentImage);
+  document.getElementById('formTitle').textContent = '✏️ Editar produto';
+  document.getElementById('cancelEdit').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function deleteProduct(id) {
+  const p = getProducts().find(x => x.id === id);
+  if (!confirm(`Remover "${p ? p.name : 'produto'}"?`)) return;
+  setProducts(getProducts().filter(x => x.id !== id));
+  if (editingId === id) clearForm();
+  toast('Produto removido.');
+  refreshAdmin();
+}
+
+/* ---------- Lista admin ---------- */
+function renderAdminList() {
+  const list = document.getElementById('adminList');
+  const empty = document.getElementById('adminEmpty');
+  const products = getProducts();
+  document.getElementById('count').textContent = products.length;
+
+  if (!products.length) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  list.innerHTML = products.map(p => `
+    <div class="admin-item">
+      <img src="${escapeHtml(p.image || placeholderImg(p.name))}" alt=""
+           onerror="this.src='${placeholderImg(p.name)}'"/>
+      <div class="info">
+        <strong>${escapeHtml(p.name)}</strong>
+        <span>${escapeHtml(p.category || 'Geral')}${p.price ? ' • R$ ' + escapeHtml(p.price) : ''}</span>
+      </div>
+      <button class="btn-ghost" onclick="editProduct(${p.id})">Editar</button>
+      <button class="btn-del" onclick="deleteProduct(${p.id})">Excluir</button>
+    </div>
+  `).join('');
+}
+
+/* ---------- Datalist de categorias ---------- */
+function renderCatList() {
+  const dl = document.getElementById('catList');
+  const cats = Array.from(new Set([
+    ...getProducts().map(p => p.category),
+    'Ferramentas', 'Eletrodomésticos', 'Casa & Utilidades', 'Geral'
+  ].filter(Boolean)));
+  dl.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+}
+
+/* ---------- Seed ---------- */
+document.getElementById('seedBtn').onclick = () => {
+  const products = getProducts();
+  if (products.length && !confirm('Isso adicionará os produtos de exemplo à sua lista atual. Continuar?')) return;
+  sampleProducts.forEach(s => products.push(Object.assign({}, s, { id: uid() })));
+  setProducts(products);
+  toast('Produtos de exemplo adicionados!');
+  refreshAdmin();
+};
+
+/* ---------- Refresh ---------- */
+function refreshAdmin() {
+  fillConfigForm();
+  renderAdminList();
+  renderCatList();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BDGstore — Catálogo de Ferramentas, Eletrodomésticos e Produtos</title>
+<link rel="icon" href="WhatsApp-Image-2026-06-11-at-19.18.22.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">
+    <img src="WhatsApp-Image-2026-06-11-at-19.18.22.png" alt="BDGstore" />
+  </div>
+  <nav class="tabs">
+    <a href="index.html" class="active">Catálogo</a>
+  </nav>
+</header>
+
+<main>
+  <section>
+    <h2 class="section-title" style="text-align:center;margin-bottom:24px">Conheça o nosso catálogo</h2>
+
+    <div class="gallery-wrap">
+      <div class="gallery-stage" id="galleryStage"></div>
+    </div>
+    <p class="gallery-hint">↕ Role a página para girar a vitrine 3D</p>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="search" placeholder="Pesquisar produto..." />
+      </div>
+    </div>
+
+    <div class="grid" id="productGrid"></div>
+    <div class="empty hidden" id="emptyState"></div>
+  </section>
+</main>
+
+<div class="fab" id="fabWhats"><span id="fabIcon"></span> Falar no WhatsApp</div>
+
+<footer>
+  © <span id="year"></span> BDGstore — Ferramentas, eletrodomésticos e produtos no geral.
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"></script>
+<script>
+/* ============================================================
+   CATÁLOGO — somente exibição. Lê os produtos do localStorage.
+============================================================ */
+let searchTerm = '';
+let rotation = 0;
+let isScrolling = false;
+let scrollTimeout = null;
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ---------- Filtro (busca) ---------- */
+function filtered() {
+  return getProducts().filter(p => {
+    if (!searchTerm) return true;
+    return (p.name || '').toLowerCase().includes(searchTerm) ||
+           (p.desc || '').toLowerCase().includes(searchTerm) ||
+           (p.category || '').toLowerCase().includes(searchTerm) ||
+           (p.badge || '').toLowerCase().includes(searchTerm);
+  });
+}
+
+/* ---------- Grade de produtos ---------- */
+function renderGrid() {
+  const grid = document.getElementById('productGrid');
+  const empty = document.getElementById('emptyState');
+  const list = filtered();
+
+  if (!list.length) {
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+    empty.textContent = getProducts().length
+      ? 'Nenhum produto encontrado para esse filtro.'
+      : 'Nenhum produto cadastrado ainda. Volte em breve!';
+    return;
+  }
+  empty.classList.add('hidden');
+
+  grid.innerHTML = list.map(p => {
+    const label = p.badge || p.category;
+    return `
+    <article class="product">
+      <div class="thumb">
+        ${label ? `<span class="badge-img">${escapeHtml(label)}</span>` : ''}
+        <img src="${escapeHtml(p.image || placeholderImg(p.name))}"
+             alt="${escapeHtml(p.name)}"
+             onerror="this.src='${placeholderImg(p.name)}'"/>
+      </div>
+      <div class="body">
+        ${label ? `<span class="badge-pill">${escapeHtml(label)}</span>` : ''}
+        <h3>${escapeHtml(p.name)}</h3>
+        <p>${escapeHtml(p.desc || '')}</p>
+        ${priceBox(p)}
+        <a class="btn-buy" href="${whatsLink(p)}" target="_blank" rel="noopener">
+          ${BAG_ICON} Comprar
+        </a>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+/* Monta o bloco de preços (Pix + parcelado opcional) */
+function priceBox(p) {
+  if (!p.price && !p.priceOld) return '<div class="price-box"></div>';
+  let html = '<div class="price-box">';
+  if (p.price) {
+    html += `<div class="price-pix">R$ ${escapeHtml(p.price)} <em>(no Pix)</em></div>`;
+  }
+  if (p.priceOld) {
+    html += `<div class="price-old">ou <s>R$ ${escapeHtml(p.priceOld)}</s> no cartão</div>`;
+  }
+  const n = parseInt(p.installments, 10);
+  const base = parseMoney(p.priceOld || p.price);
+  if (n > 0 && base > 0) {
+    html += `<div class="price-installment">em até <b>${n}x de R$ ${formatMoney(base / n)}</b> sem juros</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+/* ---------- Galeria circular 3D ---------- */
+function renderGallery() {
+  const stage = document.getElementById('galleryStage');
+  const items = getProducts().slice(0, 12);
+  if (!items.length) {
+    stage.innerHTML = `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)">
+      Nenhum produto na vitrine ainda.</div>`;
+    return;
+  }
+  const anglePer = 360 / items.length;
+  const vw = window.innerWidth;
+  let radius = items.length <= 4 ? 380 : 560;
+  if (vw <= 720) {
+    radius = Math.max(170, Math.round(Math.min(vw * 0.62, 260)));
+  }
+  stage.dataset.angle = anglePer;
+  stage.innerHTML = items.map((p, i) => `
+    <div class="gcard" data-i="${i}"
+         style="transform: rotateY(${i * anglePer}deg) translateZ(${radius}px);">
+      <img src="${escapeHtml(p.image || placeholderImg(p.name))}"
+           alt="${escapeHtml(p.name)}"
+           onerror="this.src='${placeholderImg(p.name)}'"/>
+      <div class="cap">
+        <h3>${escapeHtml(p.name)}</h3>
+        ${p.price ? `<div class="price">R$ ${escapeHtml(p.price)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+  updateGalleryTransform();
+}
+
+function updateGalleryTransform() {
+  const stage = document.getElementById('galleryStage');
+  if (!stage) return;
+  stage.style.transform = `rotateY(${rotation}deg)`;
+  const anglePer = parseFloat(stage.dataset.angle || 0);
+  stage.querySelectorAll('.gcard').forEach(card => {
+    const i = parseInt(card.dataset.i, 10);
+    const itemAngle = i * anglePer;
+    const rel = (itemAngle + (rotation % 360) + 360) % 360;
+    const norm = Math.abs(rel > 180 ? 360 - rel : rel);
+    card.style.opacity = Math.max(0.25, 1 - norm / 180);
+  });
+}
+
+window.addEventListener('scroll', () => {
+  isScrolling = true;
+  clearTimeout(scrollTimeout);
+  const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+  const progress = scrollable > 0 ? window.scrollY / scrollable : 0;
+  rotation = progress * 360;
+  updateGalleryTransform();
+  scrollTimeout = setTimeout(() => { isScrolling = false; }, 150);
+}, { passive: true });
+
+function autoRotate() {
+  if (!isScrolling) {
+    rotation += 0.06;
+    updateGalleryTransform();
+  }
+  requestAnimationFrame(autoRotate);
+}
+requestAnimationFrame(autoRotate);
+
+/* Recria a vitrine ao girar/redimensionar a tela (recalcula o raio) */
+let resizeT;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(renderGallery, 200);
+});
+
+/* ---------- Busca ---------- */
+document.getElementById('search').addEventListener('input', e => {
+  searchTerm = e.target.value.trim().toLowerCase();
+  renderGrid();
+});
+
+/* ---------- FAB WhatsApp ---------- */
+document.getElementById('fabWhats').onclick = () => window.open(whatsLink(null), '_blank');
+
+/* ---------- Atualiza ao vivo se o admin mudar em outra aba ---------- */
+window.addEventListener('storage', e => {
+  if (e.key === STORE_KEY || e.key === CFG_KEY) refreshAll();
+});
+
+/* ---------- Init ---------- */
+function refreshAll() {
+  renderGrid();
+  renderGallery();
+}
+
+document.getElementById('year').textContent = new Date().getFullYear();
+document.getElementById('fabIcon').innerHTML = WHATS_ICON;
+seedIfFirstVisit();
+refreshAll();
+</script>
+</body>
+</html>
