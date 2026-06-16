@@ -8,7 +8,7 @@
 const SUPABASE_URL = 'https://sjnwzfutmaahzgqpfjxi.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_IZBhqq8F1kgAfkT8dWY4sA__AvrYSBt';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* WhatsApp oficial da BDGstore */
 const WHATSAPP = '55996922568';
@@ -35,7 +35,7 @@ const sampleProducts = [
    PRODUTOS (Supabase Database)
 ============================================================ */
 async function getProducts() {
-  const { data, error } = await supabase
+    const { data, error } = await _sb
     .from('products')
     .select('*')
     .order('created_at', { ascending: false });
@@ -46,16 +46,16 @@ async function getProducts() {
 
 async function saveProduct(data, editingId = null) {
   if (editingId) {
-    const { error } = await supabase.from('products').update(data).eq('id', editingId);
+        const { error } = await _sb.from('products').update(data).eq('id', editingId);
     if (error) throw error;
   } else {
-    const { error } = await supabase.from('products').insert([data]);
+        const { error } = await _sb.from('products').insert([data]);
     if (error) throw error;
   }
 }
 
 async function deleteProduct(id) {
-  const { error } = await supabase.from('products').delete().eq('id', id);
+    const { error } = await _sb.from('products').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -63,17 +63,17 @@ async function deleteProduct(id) {
    AUTENTICAÇÃO (Supabase Auth)
 ============================================================ */
 async function adminLogin(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await _sb.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data;
 }
 
 async function adminLogout() {
-  await supabase.auth.signOut();
+    await _sb.auth.signOut();
 }
 
 async function getSession() {
-  const { data } = await supabase.auth.getSession();
+    const { data } = await _sb.auth.getSession();
   return data.session;
 }
 
@@ -88,12 +88,12 @@ async function uploadImage(file) {
   const blob = await res.blob();
   const ext = blob.type === 'image/png' ? 'png' : 'jpg';
   const filename = `products/${uid()}.${ext}`;
-  const { error } = await supabase.storage.from('product-images').upload(filename, blob, {
+    const { error } = await _sb.storage.from('product-images').upload(filename, blob, {
     contentType: blob.type,
     upsert: false
   });
   if (error) throw error;
-  const { data } = supabase.storage.from('product-images').getPublicUrl(filename);
+    const { data } = _sb.storage.from('product-images').getPublicUrl(filename);
   return data.publicUrl;
 }
 
