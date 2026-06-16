@@ -174,7 +174,8 @@ async function login() {
     document.getElementById('adminPwd').value = '';
     // onAuthStateChange cuida de mostrar o painel
   } catch (e) {
-    toast('E-mail ou senha incorretos.');
+    console.error('Erro de login:', e);
+    toast('Erro: ' + (e && e.message ? e.message : 'falha no login'));
   }
 }
 
