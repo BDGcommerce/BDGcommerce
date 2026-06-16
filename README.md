@@ -35,3 +35,5 @@ No painel administrativo é possível alterar:
 - Escrita no banco e upload de imagens só com sessão autenticada (Row Level Security).
 - A `anon key` é pública por design; nunca exponha a `service_role` key no frontend.
 - A página `admin.html` não tem link no catálogo — acesso por URL direta apenas.
+
+<!-- deploy trigger -->
